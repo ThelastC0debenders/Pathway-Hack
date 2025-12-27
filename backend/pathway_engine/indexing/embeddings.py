@@ -1,13 +1,15 @@
-import hashlib
-from typing import List
+import pathway as pw
+from pathway.xpacks.llm.embedders import SentenceTransformerEmbedder
 
+# 🛠️ GLOBAL EMBEDDER (Free & Local)
+# This uses 'all-MiniLM-L6-v2', a fast model from Hugging Face.
+# It converts text into 384-dimensional vectors.
+def get_embedder():
+    # The first argument must be the model name string
+    return SentenceTransformerEmbedder(
+        "all-MiniLM-L6-v2",  # Pass as positional argument
+        device="cpu"
+    )
 
-def content_hash(text: str) -> str:
-    return hashlib.sha256(
-        text.encode("utf-8", errors="ignore")
-    ).hexdigest()
-
-
-def embed_text(text: str) -> List[float]:
-    h = int(content_hash(text), 16)
-    return [(h >> i) & 1 for i in range(128)]
+# Note: You no longer need the manual content_hash for searching!
+# Pathway handles indexing and uniqueness internally using its own engine.
