@@ -3,21 +3,20 @@ Manual test for Person-2 Agent.
 Make sure Pathway Engine (Person-1) is already running.
 """
 
+from dotenv import load_dotenv
 from pathway_engine.main import engine
+from pathway_engine.query.retriever import LiveRetriever
 
 from agent.agent import LiveAgent
-from agent.planner import plan_step
-from agent.tools import fetch_live_context
 from agent.confidence import estimate_confidence
-
-from pathway_engine.query.retriever import LiveRetriever
-from pathway_engine.query.context_builder import build_context
+from llm.gemini_client import get_gemini_llm
 
 
 def main():
+    load_dotenv()
     if engine.table is None:
         print("⚡ Engine not running. Starting in-process mode...")
-        engine.start(start_web_server=False)
+        engine.start(start_web_server=False, mode="static")
 
     print("✅ Connected to Pathway Engine")
 
@@ -25,21 +24,17 @@ def main():
     # Live data from Pathway
     # ----------------------------
     live_table = engine.get_live_table()
-
     retriever = LiveRetriever(live_table)
-    context_builder = build_context(retriever)
 
     # ----------------------------
     # Agent stack
     # ----------------------------
-    tools = fetch_live_context()
-    planner = plan_step(tools)
-    confidence = estimate_confidence()
-
+    llm = get_gemini_llm()
+    
     agent = LiveAgent(
-        planner=planner,
-        context_builder=context_builder,
-        confidence_scorer=confidence,
+        llm=llm,
+        retriever=retriever,
+        confidence_scorer=estimate_confidence,
     )
 
     # ----------------------------

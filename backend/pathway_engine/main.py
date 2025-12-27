@@ -16,9 +16,9 @@ class PathwayEngine:
         self.table = None
         self.version_tracker = VersionTracker()
 
-    def start(self, start_web_server: bool = True):
+    def start(self, start_web_server: bool = True, **kwargs):
         # Start Pathway filesystem watcher
-        self.table = watch_local_folder(self.folder_path)
+        self.table = watch_local_folder(self.folder_path, **kwargs)
         print("Pathway live engine initialized")
 
         # Persist output (debug / proof)

@@ -4,16 +4,20 @@ from agent.planner import plan_step
 
 
 class LiveAgent:
-    def __init__(self, llm, retriever):
+    def __init__(self, llm, retriever, confidence_scorer=None):
         self.llm = llm
         self.retriever = retriever
+        self.confidence_scorer = confidence_scorer
         self.graph = self._build_graph()
 
     def _build_graph(self):
         graph = StateGraph(dict)
 
         def retrieve(state):
-            state["context"] = fetch_live_context(self.retriever)
+            # Returns { "content": ..., "sources": ... }
+            context_data = fetch_live_context(self.retriever)
+            state["context"] = context_data["content"]
+            state["sources"] = context_data["sources"]
             return state
 
         def respond(state):
@@ -28,6 +32,12 @@ Question:
 """
             response = self.llm.invoke(prompt)
             state["answer"] = response.content
+            
+            if self.confidence_scorer:
+                state["confidence"] = self.confidence_scorer(state["answer"])
+            else:
+                state["confidence"] = 0.0
+                
             return state
 
         graph.add_node("retrieve", retrieve)
@@ -39,4 +49,9 @@ Question:
         return graph.compile()
 
     def run(self, question: str):
-        return self.graph.invoke({"question": question})["answer"]
+        result = self.graph.invoke({"question": question})
+        return {
+            "answer": result["answer"],
+            "sources": result.get("sources", []),
+            "confidence": result.get("confidence", 0.0)
+        }
