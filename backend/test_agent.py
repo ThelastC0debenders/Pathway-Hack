@@ -1,23 +1,45 @@
-import os
+# test_agent.py
+
 from agent.agent import DevAgent
 
-# 1. Set your Gemini API Key for this session
-os.environ["GEMINI_API_KEY"] = "your_actual_key_here"
 
-def test_pipeline():
-    print("\n--- 🧪 STARTING INTEGRATION TEST ---")
+def main():
+    print("\n" + "=" * 80)
+    print("🧪 TESTING LANGGRAPH DEV AGENT")
+    print("=" * 80)
+
     agent = DevAgent()
-    
-    # Ask a question about the file you just dropped in Step 2
-    question = "What does the README.md say?"
-    print(f"❓ Question: {question}")
-    
-    try:
-        response = agent.answer_question(question)
-        print(f"\n🤖 Agent Response:\n{response}")
-        print("\n--- ✅ TEST COMPLETE ---")
-    except Exception as e:
-        print(f"\n❌ TEST FAILED: {e}")
+
+    while True:
+        try:
+            query = input("\n❓ Ask a question (or type 'exit'): ").strip()
+
+            if query.lower() in {"exit", "quit"}:
+                print("\n👋 Exiting test runner.")
+                break
+
+            result = agent.answer_question(query, verbose=True)
+
+            print("\n" + "-" * 80)
+            print("🧠 FINAL ANSWER")
+            print("-" * 80)
+            print(result["answer"])
+
+            print("\n📊 CONFIDENCE")
+            print(f"Score   : {result['confidence']:.2%}")
+            print(f"Level   : {result['confidence_level']}")
+            print(f"Strategy: {result['strategy']}")
+
+        except KeyboardInterrupt:
+            print("\n\n⛔ Interrupted by user. Exiting.")
+            break
+
+        except Exception as e:
+            print("\n❌ ERROR DURING EXECUTION")
+            print(e)
+            import traceback
+            traceback.print_exc()
+
 
 if __name__ == "__main__":
-    test_pipeline()
+    main()
