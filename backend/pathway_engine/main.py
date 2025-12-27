@@ -16,7 +16,7 @@ class PathwayEngine:
         self.table = None
         self.version_tracker = VersionTracker()
 
-    def start(self):
+    def start(self, start_web_server: bool = True):
         # Start Pathway filesystem watcher
         self.table = watch_local_folder(self.folder_path)
         print("Pathway live engine initialized")
@@ -24,17 +24,20 @@ class PathwayEngine:
         # Persist output (debug / proof)
         pw.io.csv.write(self.table, "pathway_output")
 
-        # Start GitHub webhook server
-        webhook_app = create_github_webhook_app()
-        threading.Thread(
-            target=lambda: uvicorn.run(
-                webhook_app,
-                host="0.0.0.0",
-                port=8000,
-                log_level="warning",
-            ),
-            daemon=True,
-        ).start()
+        if start_web_server:
+            # Start GitHub webhook server
+            webhook_app = create_github_webhook_app()
+            threading.Thread(
+                target=lambda: uvicorn.run(
+                    webhook_app,
+                    host="0.0.0.0",
+                    port=8000,
+                    log_level="warning",
+                ),
+                daemon=True,
+            ).start()
+
+            print("GitHub webhook server running")
 
         print("GitHub webhook server running")
 
@@ -64,7 +67,6 @@ def run_engine():
     engine.start()
     pw.run(monitoring_level=pw.MonitoringLevel.NONE)
 
-engine=None
 if __name__ == "__main__":
     engine = PathwayEngine(WATCH_FOLDER)
     engine.start()

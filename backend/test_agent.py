@@ -5,21 +5,19 @@ Make sure Pathway Engine (Person-1) is already running.
 
 from pathway_engine.main import engine
 
-from agent.agent import Agent
-from agent.planner import Planner
-from agent.tools import ToolRegistry
-from agent.confidence import ConfidenceScorer
+from agent.agent import LiveAgent
+from agent.planner import plan_step
+from agent.tools import fetch_live_context
+from agent.confidence import estimate_confidence
 
 from pathway_engine.query.retriever import LiveRetriever
-from pathway_engine.query.context_builder import ContextBuilder
+from pathway_engine.query.context_builder import build_context
 
 
 def main():
-    if engine is None:
-        raise RuntimeError(
-            "Pathway Engine is not running. "
-            "Start it first using: python -m pathway_engine.main"
-        )
+    if engine.table is None:
+        print("⚡ Engine not running. Starting in-process mode...")
+        engine.start(start_web_server=False)
 
     print("✅ Connected to Pathway Engine")
 
@@ -29,16 +27,16 @@ def main():
     live_table = engine.get_live_table()
 
     retriever = LiveRetriever(live_table)
-    context_builder = ContextBuilder(retriever)
+    context_builder = build_context(retriever)
 
     # ----------------------------
     # Agent stack
     # ----------------------------
-    tools = ToolRegistry()
-    planner = Planner(tools)
-    confidence = ConfidenceScorer()
+    tools = fetch_live_context()
+    planner = plan_step(tools)
+    confidence = estimate_confidence()
 
-    agent = Agent(
+    agent = LiveAgent(
         planner=planner,
         context_builder=context_builder,
         confidence_scorer=confidence,
