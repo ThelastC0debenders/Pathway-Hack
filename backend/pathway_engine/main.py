@@ -6,6 +6,7 @@ import uvicorn
 
 from pathway_engine.ingestion.local_source import watch_local_folder
 from pathway_engine.ingestion.github_source import create_github_webhook_app
+from pathway_engine.ingestion.github_source import _ensure_repo_initialized
 from pathway_engine.state.version_tracker import VersionTracker
 from pathway_engine.config import WATCH_FOLDER
 
@@ -62,5 +63,7 @@ if __name__ == "__main__":
     print("Pathway Engine Started")
 
     engine = PathwayEngine(WATCH_FOLDER)
+
+    _ensure_repo_initialized()
     engine.start()
     pw.run()
