@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from git import Repo
+from git import Repo, GitCommandError
 import os
 
 from pathway_engine.config import (
@@ -11,94 +11,60 @@ from pathway_engine.config import (
 
 def _ensure_repo_initialized():
     """
-    Clone the repository if it does not exist.
-    Runs ONLY once on the first valid webhook event.
+    Clone repo once if it does not exist.
     """
+    os.makedirs(WATCH_FOLDER, exist_ok=True)
+
     git_dir = os.path.join(WATCH_FOLDER, ".git")
-
-    print("🔍 Checking repository state")
-    print("📁 WATCH_FOLDER exists:", os.path.exists(WATCH_FOLDER))
-    print("✍️ WATCH_FOLDER writable:", os.access(WATCH_FOLDER, os.W_OK))
-
-    print("   WATCH_FOLDER:", os.path.abspath(WATCH_FOLDER))
-    print("   GITHUB_REPO_URL:", GITHUB_REPO_URL)
-    print("   GITHUB_BRANCH:", GITHUB_BRANCH)
-
     if not os.path.exists(git_dir):
-        print("🚀 Repository not found. Cloning now...")
-        try:
-            Repo.clone_from(
-                GITHUB_REPO_URL,
-                WATCH_FOLDER,
-                branch=GITHUB_BRANCH,
-            )
-            print("✅ Repository cloned successfully")
-        except Exception as e:
-            print("❌ CLONE FAILED")
-            print("   Error:", repr(e))
-            raise
+        print("🚀 Cloning repository into WATCH_FOLDER")
+        Repo.clone_from(
+            GITHUB_REPO_URL,
+            WATCH_FOLDER,
+            branch=GITHUB_BRANCH,
+        )
     else:
-        print("ℹ️ Repository already exists")
+        print("ℹ️ Repo already present")
 
 
 def create_github_webhook_app() -> FastAPI:
-    """
-    Creates a FastAPI app that listens to GitHub webhooks.
-    """
     app = FastAPI()
 
     @app.post("/github-webhook")
     async def github_webhook(req: Request):
-        print("\n🔥 GitHub webhook received")
-
-        payload = await req.json()
-        event_type = req.headers.get("X-GitHub-Event")
-
-        print("   Event type:", event_type)
-
-        # ----------------------------
-        # Decide whether to act
-        # ----------------------------
-
-        if event_type == "push":
-            ref = payload.get("ref")
-            print("   Push ref:", ref)
-
-            if ref != f"refs/heads/{GITHUB_BRANCH}":
-                print("   ❌ Ignored: wrong branch")
-                return {"status": "ignored branch"}
-
-        elif event_type == "pull_request":
-            merged = payload.get("pull_request", {}).get("merged", False)
-            print("   PR merged:", merged)
-
-            if not merged:
-                print("   ❌ Ignored: PR not merged")
-                return {"status": "ignored non-merged PR"}
-
-        elif event_type in {"create", "delete", "release"}:
-            print("   Repo structure change event")
-
-        else:
-            print("   ❌ Ignored: non repo-mutating event")
-            return {"status": f"ignored event {event_type}"}
-
-        # ----------------------------
-        # Clone or pull repo
-        # ----------------------------
-
         try:
-            print("➡️ About to ensure repo is initialized")
+            payload = await req.json()
+            event = req.headers.get("X-GitHub-Event")
+
+            print("\n🔥 GitHub webhook received:", event)
+
+            # Only repo-changing events
+            if event == "push":
+                ref = payload.get("ref")
+                if ref != f"refs/heads/{GITHUB_BRANCH}":
+                    return {"status": "ignored branch"}
+
+            elif event == "pull_request":
+                if not payload.get("pull_request", {}).get("merged", False):
+                    return {"status": "ignored unmerged PR"}
+
+            elif event not in {"create", "delete", "release"}:
+                return {"status": f"ignored event {event}"}
+
             _ensure_repo_initialized()
-            print("⬅️ Finished ensure repo initialization")
+
             repo = Repo(WATCH_FOLDER)
             repo.remotes.origin.pull()
 
             print("✅ Repository pulled successfully")
-            return {"status": f"repo updated via {event_type}"}
+            return {"status": "repo updated"}
+
+        except GitCommandError as e:
+            print("❌ Git error:", e)
+            return {"error": "git failure"}
 
         except Exception as e:
-            print("❌ Git operation failed:", e)
+            print("❌ Webhook error:", e)
             return {"error": str(e)}
 
     return app
