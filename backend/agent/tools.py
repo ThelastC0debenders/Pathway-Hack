@@ -1,6 +1,0 @@
-from pathway_engine.query.context_builder import build_context
-
-
-def fetch_live_context(retriever):
-    docs = retriever.fetch_documents()
-    return build_context(docs)
