@@ -17,18 +17,26 @@ def _ensure_repo_initialized():
     git_dir = os.path.join(WATCH_FOLDER, ".git")
 
     print("🔍 Checking repository state")
+    print("📁 WATCH_FOLDER exists:", os.path.exists(WATCH_FOLDER))
+    print("✍️ WATCH_FOLDER writable:", os.access(WATCH_FOLDER, os.W_OK))
+
     print("   WATCH_FOLDER:", os.path.abspath(WATCH_FOLDER))
     print("   GITHUB_REPO_URL:", GITHUB_REPO_URL)
     print("   GITHUB_BRANCH:", GITHUB_BRANCH)
 
     if not os.path.exists(git_dir):
         print("🚀 Repository not found. Cloning now...")
-        Repo.clone_from(
-            GITHUB_REPO_URL,
-            WATCH_FOLDER,
-            branch=GITHUB_BRANCH,
-        )
-        print("✅ Repository cloned successfully")
+        try:
+            Repo.clone_from(
+                GITHUB_REPO_URL,
+                WATCH_FOLDER,
+                branch=GITHUB_BRANCH,
+            )
+            print("✅ Repository cloned successfully")
+        except Exception as e:
+            print("❌ CLONE FAILED")
+            print("   Error:", repr(e))
+            raise
     else:
         print("ℹ️ Repository already exists")
 
@@ -80,8 +88,9 @@ def create_github_webhook_app() -> FastAPI:
         # ----------------------------
 
         try:
+            print("➡️ About to ensure repo is initialized")
             _ensure_repo_initialized()
-
+            print("⬅️ Finished ensure repo initialization")
             repo = Repo(WATCH_FOLDER)
             repo.remotes.origin.pull()
 
