@@ -1,30 +1,61 @@
-from llm.gemini_client import get_gemini_llm
-from pathway_engine.query.retriever import LiveRetriever
-from agent.agent import LiveAgent
+"""
+Manual test for Person-2 Agent.
+Make sure Pathway Engine (Person-1) is already running.
+"""
+
 from pathway_engine.main import engine
+
+from agent.agent import Agent
+from agent.planner import Planner
+from agent.tools import ToolRegistry
+from agent.confidence import ConfidenceScorer
+
+from pathway_engine.query.retriever import LiveRetriever
+from pathway_engine.query.context_builder import ContextBuilder
 
 
 def main():
-    print("🔍 Testing agent with LIVE Pathway engine")
+    if engine is None:
+        raise RuntimeError(
+            "Pathway Engine is not running. "
+            "Start it first using: python -m pathway_engine.main"
+        )
 
-    # Get live Pathway table
+    print("✅ Connected to Pathway Engine")
+
+    # ----------------------------
+    # Live data from Pathway
+    # ----------------------------
     live_table = engine.get_live_table()
 
-    # Init retriever
     retriever = LiveRetriever(live_table)
+    context_builder = ContextBuilder(retriever)
 
-    # Init LLM
-    llm = get_gemini_llm()
+    # ----------------------------
+    # Agent stack
+    # ----------------------------
+    tools = ToolRegistry()
+    planner = Planner(tools)
+    confidence = ConfidenceScorer()
 
-    # Init Agent
-    agent = LiveAgent(llm, retriever)
+    agent = Agent(
+        planner=planner,
+        context_builder=context_builder,
+        confidence_scorer=confidence,
+    )
 
-    # Ask a question
-    question = "What files exist in this repository?"
-    answer = agent.run(question)
+    # ----------------------------
+    # Test query
+    # ----------------------------
+    query = "What changed recently in the repository?"
 
-    print("\n🧠 AGENT ANSWER:\n")
-    print(answer)
+    print("\n🧠 Running agent query...")
+    result = agent.run(query)
+
+    print("\n================ RESULT ================\n")
+    print("📌 Answer:\n", result["answer"])
+    print("\n📚 Sources:\n", result["sources"])
+    print("\n🎯 Confidence:", result["confidence"])
 
 
 if __name__ == "__main__":

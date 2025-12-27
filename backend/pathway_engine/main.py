@@ -64,6 +64,8 @@ def run_engine():
     engine.start()
     pw.run(monitoring_level=pw.MonitoringLevel.NONE)
 
-
+engine=None
 if __name__ == "__main__":
-    run_engine()
+    engine = PathwayEngine(WATCH_FOLDER)
+    engine.start()
+    pw.run(monitoring_level=pw.MonitoringLevel.NONE)
