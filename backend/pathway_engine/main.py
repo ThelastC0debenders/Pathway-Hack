@@ -63,7 +63,5 @@ if __name__ == "__main__":
     print("Pathway Engine Started")
 
     engine = PathwayEngine(WATCH_FOLDER)
-
-    _ensure_repo_initialized()
     engine.start()
     pw.run()
