@@ -67,7 +67,11 @@ import pathway as pw
 import os
 from fastapi import FastAPI, Request
 from git import Repo
+from dotenv import load_dotenv
 from pathway_engine.ingestion.loader import load_file
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configuration (Ensure these match your actual paths/env)
 WATCH_FOLDER = "./data/repo"
@@ -77,7 +81,9 @@ GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 def _ensure_repo_initialized():
     """Clone the repo if it doesn't exist yet."""
     if not os.path.exists(os.path.join(WATCH_FOLDER, ".git")):
-        print(f"[GITHUB] 🚀 Cloning {GITHUB_REPO_URL}...")
+        # Create parent directory if it doesn't exist
+        os.makedirs(WATCH_FOLDER, exist_ok=True)
+        print(f"[GITHUB] 🚀 Cloning {GITHUB_REPO_URL} into {WATCH_FOLDER}...")
         Repo.clone_from(GITHUB_REPO_URL, WATCH_FOLDER, branch=GITHUB_BRANCH)
     else:
         print("[GITHUB] ✅ Repo already exists.")
@@ -116,6 +122,24 @@ def watch_github_repo(repo_path: str):
     Returns a Pathway table with a 'data' column containing formatted text.
     """
     print(f"[GITHUB] 🛰️ Starting live watch on: {repo_path}")
+    
+    # Ensure the folder exists, and clone repo if needed
+    if not os.path.exists(repo_path):
+        os.makedirs(repo_path, exist_ok=True)
+        print(f"[GITHUB] 📁 Created directory: {repo_path}")
+    
+    # If folder is empty or not a git repo, clone it
+    if not os.path.exists(os.path.join(repo_path, ".git")):
+        if GITHUB_REPO_URL:
+            print(f"[GITHUB] 📥 Cloning repository into {repo_path}...")
+            try:
+                Repo.clone_from(GITHUB_REPO_URL, repo_path, branch=GITHUB_BRANCH)
+                print(f"[GITHUB] ✅ Repository cloned successfully")
+            except Exception as e:
+                print(f"[GITHUB] ⚠️ Failed to clone repository: {e}")
+                print(f"[GITHUB] ⚠️ Will watch folder anyway (may be empty)")
+        else:
+            print(f"[GITHUB] ⚠️ GITHUB_REPO_URL not set, watching empty folder")
     
     # Read files with metadata
     table = pw.io.fs.read(

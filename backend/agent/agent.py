@@ -53,6 +53,8 @@ from llm.gemini_client import GeminiClient
 from agent.planner import Planner
 from agent.tools import Tools
 from agent.confidence import ConfidenceAssessor
+from change_intelligence import analyze_code_changes, detect_changes, detect_breaking_changes, analyze_impact
+from memory import MemoryStore, MemoryRetriever, get_default_store
 
 
 # ============================================================================
@@ -65,6 +67,14 @@ class AgentState(TypedDict):
     raw_docs: list
     context: str
     metadata: dict
+
+    # Memory-related fields
+    memory_context: dict
+    related_memory: dict
+
+    # Change intelligence fields
+    change_analysis: dict
+    file_changes: dict
 
     strategy: str
     plan_reasoning: str
@@ -96,12 +106,18 @@ class DevAgent:
         self.planner = Planner()
         self.tools = Tools()
         self.confidence_assessor = ConfidenceAssessor()
+        
+        # Initialize memory and change intelligence
+        self.memory_store = get_default_store()
+        self.memory_retriever = MemoryRetriever(self.memory_store)
 
         self.graph = self._build_graph()
 
         print("[AGENT] 🤖 LangGraph DevAgent initialized")
+        print("[AGENT] 🧠 Memory store initialized")
+        print("[AGENT] 🔍 Change Intelligence initialized")
         print("[AGENT] 📊 Graph structure:")
-        print("[AGENT]    observe → plan → route → [tools] → generate → assess → format")
+        print("[AGENT]    observe → plan → route → [tools] → generate → assess → format → memory")
 
     def _build_graph(self):
         workflow = StateGraph(AgentState)
@@ -128,7 +144,9 @@ class DevAgent:
         workflow.add_edge("use_tools", "generate")
         workflow.add_edge("generate", "assess_confidence")
         workflow.add_edge("assess_confidence", "format_output")
-        workflow.add_edge("format_output", END)
+        workflow.add_node("store_memory", self.store_memory_node)
+        workflow.add_edge("format_output", "store_memory")
+        workflow.add_edge("store_memory", END)
 
         return workflow.compile()
 
@@ -140,11 +158,30 @@ class DevAgent:
         print("="*70)
         print(f"📝 Query: {state['query']}")
 
+        # 1. Check memory for related past questions/explanations
+        print("🧠 Checking memory for related context...")
+        related_memory = self.memory_retriever.find_related_context(state['query'])
+        
+        memory_summary = {
+            "related_questions": len(related_memory.get("questions", [])),
+            "related_explanations": len(related_memory.get("explanations", [])),
+            "related_decisions": len(related_memory.get("design_decisions", []))
+        }
+        print(f"💾 Found {memory_summary['related_questions']} related questions, "
+              f"{memory_summary['related_explanations']} explanations, "
+              f"{memory_summary['related_decisions']} design decisions")
+
+        # 2. Retrieve relevant documents
         print("🔎 Retrieving relevant documents...")
         raw_docs = self.retriever.retrieve(state['query'])
 
         print("📚 Building context from documents...")
         context = self.builder.build_prompt_context(raw_docs)
+
+        # 3. Enhance context with memory if available
+        if related_memory.get("questions") or related_memory.get("explanations"):
+            memory_context = self.memory_retriever.format_memory_response(related_memory)
+            context = f"{memory_context}\n\n--- Current Code Context ---\n{context}"
 
         metadata = {
             "num_sources": len(raw_docs),
@@ -161,7 +198,9 @@ class DevAgent:
             "raw_docs": raw_docs,
             "context": context,
             "metadata": metadata,
-            "messages": [f"[OBSERVE] Retrieved {len(raw_docs)} sources"]
+            "memory_context": memory_summary,
+            "related_memory": related_memory,
+            "messages": [f"[OBSERVE] Retrieved {len(raw_docs)} sources, {memory_summary['related_questions']} memory items"]
         }
 
     def plan_node(self, state: AgentState) -> AgentState:
@@ -224,6 +263,38 @@ class DevAgent:
                 if len(sources) >= 2:
                     result = self.tools.compare_versions(sources[0], sources[1])
                     tool_results['comparison'] = result
+            
+            elif tool_name == "analyze_code_changes":
+                # Use change intelligence to analyze changes
+                # This would need old and new code - for now, use context
+                if 'old_content' in state.get('file_changes', {}) and 'new_content' in state.get('file_changes', {}):
+                    file_path = state.get('file_changes', {}).get('file_path', 'unknown')
+                    result = analyze_code_changes(
+                        state['file_changes']['old_content'],
+                        state['file_changes']['new_content'],
+                        file_path
+                    )
+                    tool_results['change_analysis'] = result
+
+            elif tool_name == "detect_breaking_changes":
+                if 'old_content' in state.get('file_changes', {}) and 'new_content' in state.get('file_changes', {}):
+                    file_path = state.get('file_changes', {}).get('file_path', 'unknown')
+                    result = detect_breaking_changes(
+                        state['file_changes']['old_content'],
+                        state['file_changes']['new_content'],
+                        file_path
+                    )
+                    tool_results['breaking_changes'] = result
+
+            elif tool_name == "analyze_impact":
+                if 'old_content' in state.get('file_changes', {}) and 'new_content' in state.get('file_changes', {}):
+                    file_path = state.get('file_changes', {}).get('file_path', 'unknown')
+                    result = analyze_impact(
+                        state['file_changes']['old_content'],
+                        state['file_changes']['new_content'],
+                        file_path
+                    )
+                    tool_results['impact_analysis'] = result
 
             elif tool_name == "express_uncertainty":
                 result = self.tools.express_uncertainty(
@@ -299,16 +370,96 @@ Live Context:
         else:
             final_answer = state['answer']
 
+        # Add change intelligence info if available
+        if 'change_analysis' in state.get('tool_results', {}):
+            change_info = state['tool_results']['change_analysis']
+            if change_info.get('changed'):
+                final_answer += f"\n\n📊 Change Analysis:\n"
+                final_answer += f"- Files changed: {', '.join(change_info.get('files_changed', []))}\n"
+                final_answer += f"- Reason: {change_info.get('reason', 'N/A')}\n"
+                if change_info.get('breaking_change'):
+                    final_answer += f"- ⚠️ Breaking changes detected: {change_info.get('breaking_details', 'N/A')}\n"
+                if change_info.get('impact'):
+                    final_answer += f"- Impact: {'; '.join(change_info.get('impact', [])[:3])}\n"
+
         return {
             **state,
             "final_answer": final_answer,
             "messages": ["[FORMAT] Output finalized"]
         }
 
+    def store_memory_node(self, state: AgentState) -> AgentState:
+        print("\n" + "="*70)
+        print("💾 STEP 7: STORE MEMORY")
+        print("="*70)
+
+        try:
+            # Store the question and answer
+            question_id = self.memory_store.store_question(
+                question=state['query'],
+                answer=state['final_answer'],
+                context={
+                    "strategy": state['strategy'],
+                    "confidence": state['confidence_score'],
+                    "num_sources": state['metadata']['num_sources']
+                },
+                tags=["agent", state['strategy']]
+            )
+
+            # Store explanation if it's a meaningful explanation
+            if state['strategy'] in ['explain_change', 'summarize']:
+                explanation_id = self.memory_store.store_explanation(
+                    topic=state['query'],
+                    explanation=state['final_answer'],
+                    related_files=[doc.get('path', 'unknown') for doc in state['raw_docs'][:5]],
+                    tags=["explanation", state['strategy']]
+                )
+                print(f"✅ Stored explanation: {explanation_id}")
+
+            # Store change context if change analysis was performed
+            if 'change_analysis' in state.get('tool_results', {}):
+                change_info = state['tool_results']['change_analysis']
+                change_id = self.memory_store.store_change_context(
+                    file_path=change_info.get('file', 'unknown'),
+                    change_summary=change_info.get('change_summary', ''),
+                    change_details=change_info,
+                    related_questions=[question_id]
+                )
+                print(f"✅ Stored change context: {change_id}")
+
+            print(f"✅ Stored question-answer pair: {question_id}")
+            
+            return {
+                **state,
+                "messages": [f"[MEMORY] Stored question: {question_id}"]
+            }
+        except Exception as e:
+            print(f"⚠️ Failed to store memory: {e}")
+            return {
+                **state,
+                "messages": [f"[MEMORY] Failed to store: {str(e)}"]
+            }
+
     # ========================= PUBLIC =========================
 
-    def answer_question(self, query: str, verbose: bool = True) -> dict:
-        initial_state = {"query": query, "messages": []}
+    def answer_question(self, query: str, verbose: bool = True, old_content: str = None, new_content: str = None, file_path: str = None) -> dict:
+        initial_state = {
+            "query": query, 
+            "messages": [],
+            "memory_context": {},
+            "related_memory": {},
+            "change_analysis": {},
+            "file_changes": {}
+        }
+        
+        # If old/new content provided, add to state for change intelligence
+        if old_content and new_content:
+            initial_state["file_changes"] = {
+                "old_content": old_content,
+                "new_content": new_content,
+                "file_path": file_path or "unknown"
+            }
+        
         final_state = self.graph.invoke(initial_state)
 
         return {
@@ -319,7 +470,9 @@ Live Context:
             "metadata": {
                 "num_sources": final_state['metadata']['num_sources'],
                 "tools_used": list(final_state.get('tool_results', {}).keys()),
-                "confidence_factors": final_state.get('confidence_reasoning', '')
+                "confidence_factors": final_state.get('confidence_reasoning', ''),
+                "memory_items_found": final_state.get('memory_context', {}),
+                "change_analysis": final_state.get('tool_results', {}).get('change_analysis')
             },
             "trace": final_state['messages'] if verbose else []
         }

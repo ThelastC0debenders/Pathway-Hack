@@ -29,6 +29,25 @@ def main():
             print(f"Score   : {result['confidence']:.2%}")
             print(f"Level   : {result['confidence_level']}")
             print(f"Strategy: {result['strategy']}")
+            
+            # Display memory information
+            if result.get('metadata', {}).get('memory_items_found'):
+                memory_info = result['metadata']['memory_items_found']
+                print("\n💾 MEMORY")
+                print(f"Related questions found: {memory_info.get('related_questions', 0)}")
+                print(f"Related explanations found: {memory_info.get('related_explanations', 0)}")
+                print(f"Related design decisions found: {memory_info.get('related_decisions', 0)}")
+            
+            # Display change intelligence information
+            if result.get('metadata', {}).get('change_analysis'):
+                change_info = result['metadata']['change_analysis']
+                print("\n🔍 CHANGE INTELLIGENCE")
+                if change_info.get('changed'):
+                    print(f"Files changed: {', '.join(change_info.get('files_changed', []))}")
+                    print(f"Breaking changes: {'Yes' if change_info.get('breaking_change') else 'No'}")
+                    if change_info.get('breaking_change'):
+                        print(f"  - Details: {change_info.get('breaking_details', 'N/A')[:100]}")
+                    print(f"Impact: {change_info.get('impact', ['N/A'])[0] if change_info.get('impact') else 'N/A'}")
 
         except KeyboardInterrupt:
             print("\n\n⛔ Interrupted by user. Exiting.")
