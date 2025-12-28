@@ -5,7 +5,7 @@ from git import Repo
 from pathway_engine.ingestion.loader import load_file
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path=(os.path.join(os.getcwd() , ".env")))
 
 # Configuration (Ensure these match your actual paths/env)
 WATCH_FOLDER = "./data/repo"
