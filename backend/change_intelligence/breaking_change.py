@@ -217,20 +217,23 @@ class BreakingChangeDetector:
         changes = []
         
         # Check if required parameters changed (parameters without defaults)
-        old_required = len(old_sig.args) - old_sig.defaults_count
-        new_required = len(new_sig.args) - new_sig.defaults_count
+        old_required_count = len(old_sig.args) - old_sig.defaults_count
+        new_required_count = len(new_sig.args) - new_sig.defaults_count
         
-        if new_required > old_required:
-            changes.append(f"added {new_required - old_required} required parameter(s)")
+        if new_required_count > old_required_count:
+            changes.append(f"added {new_required_count - old_required_count} required parameter(s)")
         
-        # Check if parameters were removed (excluding those with defaults)
-        if len(old_sig.args) > len(new_sig.args):
-            removed_params = old_sig.args[len(new_sig.args):]
-            changes.append(f"removed parameter(s): {', '.join(removed_params)}")
-        
-        # Check if parameter order changed (simplified check)
-        common_params = set(old_sig.args) & set(new_sig.args)
-        if common_params and old_sig.args[:len(common_params)] != new_sig.args[:len(common_params)]:
+        # Check for renamed or removed parameters (breaking for keyword calls)
+        # Any parameter in old_sig MUST exist in new_sig
+        missing_params = [p for p in old_sig.args if p not in new_sig.args]
+        if missing_params:
+            changes.append(f"parameter(s) renamed or removed: {', '.join(missing_params)}")
+            
+        # Check for parameter reordering (breaking for positional calls)
+        # Compare common parameters in sequence
+        common_old = [p for p in old_sig.args if p in new_sig.args]
+        common_new = [p for p in new_sig.args if p in old_sig.args]
+        if common_old != common_new:
             changes.append("parameter order changed")
         
         # Check varargs/kwargs changes
