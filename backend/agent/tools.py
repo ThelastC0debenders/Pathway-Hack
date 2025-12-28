@@ -1,6 +1,35 @@
+import os
+from dotenv import load_dotenv
+from llm.gemini_client import GeminiClient
+
+load_dotenv()
+
 class Tools:
-    def summarize(self, text: str, max_length: int):
-        return text[:max_length] + "..." if len(text) > max_length else text
+    def __init__(self):
+        self.llm = GeminiClient()
+    def llm_summarize(self, query: str, context: str) -> str:
+        prompt = f"""
+            You are a senior software engineer.
+
+            Task:
+            Summarize the following retrieved code context for the user query.
+
+            User query:     
+            {query}
+
+            Retrieved context (may include multiple files):
+            {context[:3000]}
+
+            Rules:
+            - Focus on the main functionality and structure
+            - Do NOT invent files or behavior
+            - If context is noisy or mixed, summarize the dominant purpose
+            - If context does not clearly answer the query, say so
+            - Output plain text (no JSON)
+        """
+
+        return self.llm.generate(prompt)
+
 
     def extract_key_points(self, text: str, num_points: int):
         lines = [l for l in text.split("\n") if l.strip()]

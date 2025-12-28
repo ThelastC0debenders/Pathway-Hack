@@ -13,8 +13,13 @@ class Planner:
         if quality == "limited":
             return Plan("uncertain", ["express_uncertainty"], "Context limited", 0.4)
 
-        if "summary" or "summarize" in query.lower():
-            return Plan("summarize", ["extract_key_points"], "Summary requested", 0.7)
+        if "summary" in query.lower() or "summarize" in query.lower():
+            return Plan(
+                "summarize",
+                ["llm_summarize"],   # 🔁 new tool
+                "LLM-based summary requested",
+                0.7
+            )
 
         if "change" in query.lower():
             return Plan("explain_change", ["extract_changes"], "Change explanation", 0.75)

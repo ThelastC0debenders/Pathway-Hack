@@ -45,7 +45,11 @@ DevAgent - LangGraph-based Agentic System
 from typing import TypedDict, Annotated, Literal
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
+
 import operator
+import operator
+import json
+import re
 
 from pathway_engine.query.retriever import PathwayRetriever
 from pathway_engine.query.context_builder import ContextBuilder
@@ -59,8 +63,13 @@ from agent.confidence import ConfidenceAssessor
 # STATE DEFINITION
 # ============================================================================
 
+
 class AgentState(TypedDict):
     query: str
+
+    explanation: str
+    code: str
+    instruction: str
 
     raw_docs: list
     context: str
@@ -207,9 +216,12 @@ class DevAgent:
         for tool_name in state['tools_needed']:
             print(f"\n⚙️  Executing tool: {tool_name}")
 
-            if tool_name == "summarize":
-                result = self.tools.summarize(state['context'], 200)
-                tool_results['summary'] = result
+            if tool_name == "llm_summarize":
+                result = self.tools.llm_summarize(
+                    state["query"],
+                    state["context"]
+                )
+                tool_results["summary"] = result
 
             elif tool_name == "extract_key_points":
                 result = self.tools.extract_key_points(state['context'], 5)
@@ -246,21 +258,60 @@ class DevAgent:
 
         strategy = state['strategy']
 
+        if strategy == "summarize" and "summary" in state.get("tool_results", {}):
+            answer = state["tool_results"]["summary"]
+
+            return {
+                **state,
+                "answer": answer,
+                "explanation": answer,
+                "code": "",
+                "instruction": "",
+                "messages": ["[GENERATE] Summary from Gemini tool"]
+            }
+
         if strategy == "uncertain" and "uncertainty_response" in state.get('tool_results', {}):
             answer = state['tool_results']['uncertainty_response']
+            code = ""
+            instruction = ""
         else:
             prompt = f"""User Question: {state['query']}
 
 Live Context:
 {state['context'][:2000]}
+
+You are a technical expert. Provide a structured response.
+Respond ONLY in valid JSON format with the following keys:
+- "explanation": The main answer text (can use Markdown).
+- "code": Relevant code snippets from the context or generated examples.
+- "instruction": Specific action items, warnings, or next steps.
+
+Ensure the JSON is valid and properly escaped.
 """
-            answer = self.llm.generate(prompt)
+            raw_answer = self.llm.generate(prompt)
+            
+            # Attempt to parse JSON
+            try:
+                # Clean up potential markdown fences
+                clean_json = raw_answer.replace("```json", "").replace("```", "").strip()
+                data = json.loads(clean_json)
+                answer = data.get("explanation", raw_answer)
+                code = data.get("code", "")
+                instruction = data.get("instruction", "")
+            except Exception as e:
+                print(f"[GENERATE] ⚠️ JSON parse failed: {e}. Fallback to raw text.")
+                answer = raw_answer
+                code = ""
+                instruction = ""
 
         print(f"✅ Answer generated ({len(answer)} chars)")
         return {
             **state,
             "answer": answer,
-            "messages": [f"[GENERATE] Answer generated ({len(answer)} chars)"]
+            "explanation": answer,
+            "code": code,
+            "instruction": instruction,
+            "messages": [f"[GENERATE] Generated structured response"]
         }
 
     def assess_node(self, state: AgentState) -> AgentState:
@@ -311,8 +362,10 @@ Live Context:
         initial_state = {"query": query, "messages": []}
         final_state = self.graph.invoke(initial_state)
 
-        return {
-            "answer": final_state['final_answer'],
+        result = {
+            "explanation": final_state.get('explanation', final_state['final_answer']),
+            "code": final_state.get('code', ''),
+            "instruction": final_state.get('instruction', ''),
             "confidence": final_state['confidence_score'],
             "confidence_level": final_state['confidence_level'],
             "strategy": final_state['strategy'],
@@ -321,5 +374,32 @@ Live Context:
                 "tools_used": list(final_state.get('tool_results', {}).keys()),
                 "confidence_factors": final_state.get('confidence_reasoning', '')
             },
+            "sources": [],
             "trace": final_state['messages'] if verbose else []
         }
+
+        # ✅ NOW populate sources BEFORE returning
+        for i, doc in enumerate(final_state.get('raw_docs', [])):
+            print(f"\n[SOURCES DEBUG] Doc #{i} type:", type(doc))
+            if isinstance(doc, dict):
+                print("[SOURCES DEBUG] Dict keys:", doc.keys())
+                print("[SOURCES DEBUG] Metadata:", doc.get("metadata"))
+                content = doc.get('text', doc.get('page_content', ''))
+                meta = doc.get('metadata', {})
+            else:
+                print("[SOURCES DEBUG] page_content exists:", hasattr(doc, "page_content"))
+                print("[SOURCES DEBUG] metadata exists:", hasattr(doc, "metadata"))
+                print("[SOURCES DEBUG] metadata value:", getattr(doc, "metadata", None))
+                content = getattr(doc, 'page_content', '')
+                meta = getattr(doc, 'metadata', {})
+
+            file_name = meta.get('path', 'unknown')
+            chunk_id = meta.get('chunk_id', '?')
+
+            result["sources"].append({
+                "file": file_name,
+                "lines": f"Chunk {chunk_id}",
+                "text": content[:120] + "..."
+            })
+
+        return result
