@@ -1,15 +1,34 @@
 import React from 'react'
+import { useLocation } from 'react-router-dom'
 
 interface HeaderProps {
   lastUpdate: number
 }
 
 const Header: React.FC<HeaderProps> = ({ lastUpdate }) => {
+  const location = useLocation()
+  
+  const getPageTitle = () => {
+    switch (location.pathname) {
+      case '/':
+      case '/dashboard':
+        return 'SYSTEM DASHBOARD'
+      case '/ask-the-agent':
+        return 'ASK THE AGENT'
+      case '/change-intelligence':
+        return 'CHANGE INTELLIGENCE'
+      case '/reasoning-confidence':
+        return 'REASONING & CONFIDENCE'
+      default:
+        return 'SYSTEM DASHBOARD'
+    }
+  }
+
   return (
     <div className="header">
       <div className="header-left">
         <span className="command-icon">&gt;_</span>
-        <h1 className="header-title">SYSTEM DASHBOARD</h1>
+        <h1 className="header-title">{getPageTitle()}</h1>
         <div className="live-status">
           <div className="live-dot"></div>
           <span className="live-text">LIVE INDEXING: ON</span>
