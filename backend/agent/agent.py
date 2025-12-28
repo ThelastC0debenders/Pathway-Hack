@@ -232,7 +232,7 @@ class DevAgent:
                     state['plan_reasoning']
                 )
                 tool_results['uncertainty_response'] = result
-
+    
         return {
             **state,
             "tool_results": tool_results,
