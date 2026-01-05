@@ -8,7 +8,7 @@
 #         self.retriever = PathwayRetriever()
 #         self.builder = ContextBuilder()
 #         self.llm = GeminiClient()
-# de
+#its working
 #     def answer_question(self, user_query: str):
 #         # 1. Retrieve
 #         raw_docs = self.retriever.retrieve(user_query)
