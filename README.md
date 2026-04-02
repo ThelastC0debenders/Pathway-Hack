@@ -7,8 +7,7 @@
 CodeFlux is an intelligent developer assistant that combines **Pathway's live data processing** with **LangGraph's agentic framework** to provide real-time code intelligence. The system watches your codebase, maintains a live index, and answers questions about your code with confidence scoring and multi-step reasoning.
 
 ### Key Features
-# make changes
-# making changes
+
 - 🔥 **Live Code Indexing**: Real-time monitoring of code changes using Pathway
 - 🧠 **Agentic Reasoning**: Multi-step reasoning powered by LangGraph
 - 🎯 **Confidence Scoring**: Every answer comes with confidence levels and reasoning
